@@ -5,7 +5,14 @@ const fs = require("fs");
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+
+const corsOptions = {
+  origin: "*",
+  credentials: true,
+  optionSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
 
 const Address = require("./models/address.model");
 const Product = require("./models/products.model");
@@ -100,7 +107,7 @@ app.get("/cartItems", async (req, res) => {
   }
 });
 
-app.get("/shipping-addresses", async (req, res) => {
+app.get("/shipping_addresses", async (req, res) => {
   try {
     const addresses = await Address.find();
     if (addresses) {
@@ -111,7 +118,7 @@ app.get("/shipping-addresses", async (req, res) => {
   }
 });
 
-app.get("/user-profile-info", async (req, res) => {
+app.get("/user_profile_info", async (req, res) => {
   try {
     const userInfo = await User.find();
     if (userInfo) {
@@ -124,7 +131,7 @@ app.get("/user-profile-info", async (req, res) => {
   }
 });
 
-app.get("/order-items", async (req, res) => {
+app.get("/order_items", async (req, res) => {
   try {
     const allItems = await Order.find();
     if (allItems.length > 0) {
@@ -216,7 +223,7 @@ app.post("/product/cart/:productId", async (req, res) => {
   }
 });
 
-app.post("/product/cart-quantity", async (req, res) => {
+app.post("/product/cart_quantity", async (req, res) => {
   const { productId, cartQuantity } = req.body;
   try {
     const updateCart = await Cart.findOneAndUpdate(
@@ -235,7 +242,7 @@ app.post("/product/cart-quantity", async (req, res) => {
   }
 });
 
-app.post("/add-ship-address", async (req, res) => {
+app.post("/add_ship_address", async (req, res) => {
   const { data, previousSelectedAddress } = req.body;
   try {
     const addNewAddress = new Address(data);
@@ -258,7 +265,7 @@ app.post("/add-ship-address", async (req, res) => {
   }
 });
 
-app.post("/update-address-deliver", async (req, res) => {
+app.post("/update_address_deliver", async (req, res) => {
   const { deliverAddressId, notDeliverAddressId } = req.body;
   try {
     const updateDeliverAddress = await Address.findByIdAndUpdate(
@@ -280,7 +287,7 @@ app.post("/update-address-deliver", async (req, res) => {
   }
 });
 
-app.post("/update-address-details", async (req, res) => {
+app.post("/update_address_details", async (req, res) => {
   const { dataToUpdate, addressId } = req.body;
   try {
     const updatedAddress = await Address.findByIdAndUpdate(
@@ -301,7 +308,7 @@ app.post("/update-address-details", async (req, res) => {
   }
 });
 
-app.post("/update-user-profile", async (req, res) => {
+app.post("/update_user_profile", async (req, res) => {
   const { profileId, dataToUpdate } = req.body;
 
   try {
@@ -318,7 +325,7 @@ app.post("/update-user-profile", async (req, res) => {
   }
 });
 
-app.post("/move-cart-to-order", async (req, res) => {
+app.post("/move_cart_to_order", async (req, res) => {
   const { orderedItems, deliveryAddress } = req.body;
 
   try {
@@ -345,7 +352,7 @@ app.post("/move-cart-to-order", async (req, res) => {
   }
 });
 
-app.delete("/delete-address/:addressId", async (req, res) => {
+app.delete("/delete_address/:addressId", async (req, res) => {
   const addressId = req.params.addressId;
 
   try {
