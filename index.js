@@ -172,16 +172,23 @@ app.post("/product/favourite/:productId", async (req, res) => {
     if (updatedItem) {
       if (updateFavourite.isFavourite === true) {
         const newItem = new Favourite({ item: productId });
-        await newItem.save();
+        const savedFavouriteItem = await newItem.save();
+        const newFavouriteItem = await savedFavouriteItem.populate("item");
+
+        res.status(201).json({
+          message: "Product added to wishlist",
+          updatedItem,
+          newFavouriteItem,
+        });
       } else {
         const existingItem = await Favourite.findOne({ item: productId });
         if (existingItem) {
           await Favourite.findOneAndDelete({ item: productId });
+          res
+            .status(200)
+            .json({ message: "Product removed from wishlist", updatedItem });
         }
       }
-      res
-        .status(200)
-        .json({ message: "Product updated successfully", updatedItem });
     } else {
       res.status(404).json({ error: "Product not found" });
     }
@@ -207,13 +214,19 @@ app.post("/product/cart/:productId", async (req, res) => {
     if (updatedItem) {
       if (isInCart) {
         const newItem = new Cart({ cartQuantity: 1, item: productId });
-        await newItem.save();
+        const savedCartItem = await newItem.save();
+        const newCartItem = await savedCartItem.populate("item");
+
+        res
+          .status(201)
+          .json({ message: "Product added To cart", newCartItem, updatedItem });
       } else {
         await Cart.findOneAndDelete({ item: productId });
+
+        res
+          .status(200)
+          .json({ message: "Product removed from cart", updatedItem });
       }
-      res
-        .status(200)
-        .json({ message: "Product updated successfully", updatedItem });
     } else {
       res.status(404).json({ error: "Product not found" });
     }
