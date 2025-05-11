@@ -1,7 +1,9 @@
 require("dotenv").config();
 const express = require("express");
+const jwt = require("jsonwebtoken");
 const cors = require("cors");
 const fs = require("fs");
+const authRoutes = require("./routes/auth");
 
 const app = express();
 app.use(express.json());
@@ -21,23 +23,28 @@ const Cart = require("./models/cart.model");
 const User = require("./models/user.model");
 const Order = require("./models/orders.model");
 const initializeDB = require("./db/db.connect");
+const { Error } = require("mongoose");
+const JWT_SECRET = process.env.JWT_SECRET;
 
 initializeDB();
 
-// const seedData = async () => {
-//   try {
-//     const jsonData = fs.readFileSync("products.json");
-//     const productsData = JSON.parse(jsonData);
-//     for (let product of productsData) {
-//       const newProduct = new Product(product);
-//       await newProduct.save();
-//     }
-//   } catch (error) {
-//     console.log("Error occured while seeding", error);
-//   }
-// };
+const verifyJwt = (req, res, next) => {
+  const token = req.headers.authorization.split(" ")[1];
 
-// seedData();
+  if (!token) {
+    return res.status(401).json({ error: "Token is required" });
+  }
+  try {
+    const decodeToken = jwt.verify(token, JWT_SECRET);
+
+    req.user = decodeToken;
+    next();
+  } catch (error) {
+    res.status(401).json({ error: "Invalid or expired userToken" });
+  }
+};
+
+app.use("/auth", authRoutes);
 
 app.get("/", (req, res) => {
   res.send("Express");
@@ -50,7 +57,6 @@ app.get("/products", async (req, res) => {
     res.status(200).json(fetchProducts);
   } catch (error) {
     res.status(500).json({ error: "Error occured while fetching products" });
-    console.log("Failed to fetch products", error);
   }
 });
 
@@ -67,11 +73,10 @@ app.get("/products/:productId", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
-    console.log(error);
   }
 });
 
-app.get("/products/category/:categoryName", async (req, res) => {
+app.get("/products/category/:categoryName", verifyJwt, async (req, res) => {
   const { categoryName } = req.params;
   try {
     const categoryProducts = await Product.find({ category: categoryName });
@@ -81,69 +86,68 @@ app.get("/products/category/:categoryName", async (req, res) => {
       res.status(404).json({ error: "Selected category is not found" });
     }
   } catch (error) {
-    console.log("Error in fetching ", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-app.get("/favouriteItems", async (req, res) => {
+app.get("/favouriteItems", verifyJwt, async (req, res) => {
   try {
-    const favouriteItems = await Favourite.find().populate("item");
+    const favouriteItems = await Favourite.find({
+      owner: req.user.id,
+    }).populate("item");
+
     res.status(200).json(favouriteItems);
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
-    console.log(error);
   }
 });
 
-app.get("/cartItems", async (req, res) => {
+app.get("/cartItems", verifyJwt, async (req, res) => {
   try {
-    const allCartItems = await Cart.find().populate("item");
+    const allCartItems = await Cart.find({ owner: req.user.id }).populate(
+      "item"
+    );
 
     res.status(200).json(allCartItems);
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
-    console.log(error);
   }
 });
 
-app.get("/shipping_addresses", async (req, res) => {
+app.get("/shipping_addresses", verifyJwt, async (req, res) => {
   try {
-    const addresses = await Address.find();
-    if (addresses) {
-      res.status(200).json(addresses);
-    }
+    const addresses = await Address.find({ owner: req.user.id });
+
+    res.status(200).json(addresses);
   } catch (error) {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-app.get("/user_profile_info", async (req, res) => {
+app.get("/user_profile_info", verifyJwt, async (req, res) => {
   try {
-    const userInfo = await User.find();
+    const userInfo = await User.findById(req.user.id).select("-password");
     if (userInfo) {
       res.status(200).json(userInfo);
     } else {
       res.status(404).json({ error: "User Profile details not found." });
     }
   } catch (error) {
-    res.status(500).json({ error: "Internal server error.", error });
+    res.status(500).json({ error: "Internal server error." });
   }
 });
 
-app.get("/order_items", async (req, res) => {
+app.get("/order_items", verifyJwt, async (req, res) => {
   try {
-    const allItems = await Order.find();
-    if (allItems.length > 0) {
-      res.status(200).send(allItems);
-    }
+    const allItems = await Order.find({ owner: req.user.id });
+
+    res.status(200).send(allItems);
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
-    console.log(error);
   }
 });
 
-app.get("/order-details/:orderId", async (req, res) => {
+app.get("/order-details/:orderId", verifyJwt, async (req, res) => {
   const orderId = req.params.orderId;
   try {
     const orderDetails = await Order.findById(orderId);
@@ -154,93 +158,78 @@ app.get("/order-details/:orderId", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: "Internal server error." });
-    console.log(error);
   }
 });
 
 //POST API
-app.post("/product/favourite/:productId", async (req, res) => {
+app.post("/product/favourite/:productId", verifyJwt, async (req, res) => {
   const productId = req.params.productId;
-  const updateFavourite = req.body;
 
   try {
-    const updatedItem = await Product.findByIdAndUpdate(
-      productId,
-      updateFavourite,
-      { new: true }
-    );
-    if (updatedItem) {
-      if (updateFavourite.isFavourite === true) {
-        const newItem = new Favourite({ item: productId });
-        const savedFavouriteItem = await newItem.save();
-        const newFavouriteItem = await savedFavouriteItem.populate("item");
+    const findFavouriteItem = await Favourite.findOne({
+      owner: req.user.id,
+      item: productId,
+    });
+    if (!findFavouriteItem) {
+      const newFavouriteItem = new Favourite({
+        item: productId,
+        owner: req.user.id,
+      });
 
-        res.status(201).json({
-          message: "Product added to wishlist",
-          updatedItem,
-          newFavouriteItem,
-        });
-      } else {
-        const existingItem = await Favourite.findOne({ item: productId });
-        if (existingItem) {
-          await Favourite.findOneAndDelete({ item: productId });
-          res
-            .status(200)
-            .json({ message: "Product removed from wishlist", updatedItem });
-        }
-      }
+      const savedFavouriteItem = await newFavouriteItem.save();
+      await savedFavouriteItem.populate("item");
+      res.status(201).json({ savedFavouriteItem });
     } else {
-      res.status(404).json({ error: "Product not found" });
+      const removedFavouriteItem = await Favourite.findOneAndDelete({
+        item: productId,
+        owner: req.user.id,
+      });
+      res.status(200).json({ removedFavouriteItem });
     }
   } catch (error) {
     res.status(500).json({ error: "Internal server error." });
-    console.log(error);
   }
 });
 
-app.post("/product/cart/:productId", async (req, res) => {
+app.post("/product/cart/:productId", verifyJwt, async (req, res) => {
   const productId = req.params.productId;
   const { isInCart } = req.body;
 
   try {
-    const updatedItem = await Product.findByIdAndUpdate(
-      productId,
-      { isInCart },
-      {
-        new: true,
-      }
-    );
+    const findItemInCart = await Cart.findOne({
+      owner: req.user.id,
+      item: productId,
+    });
 
-    if (updatedItem) {
-      if (isInCart) {
-        const newItem = new Cart({ cartQuantity: 1, item: productId });
-        const savedCartItem = await newItem.save();
-        const newCartItem = await savedCartItem.populate("item");
+    if (!findItemInCart) {
+      const newCartItem = new Cart({
+        owner: req.user.id,
+        item: productId,
+        cartQuantity: 1,
+      });
+      const savedCartItem = await newCartItem.save();
+      await savedCartItem.populate("item");
+      return res.status(201).json({ savedCartItem });
+    }
 
-        res
-          .status(201)
-          .json({ message: "Product added To cart", newCartItem, updatedItem });
-      } else {
-        await Cart.findOneAndDelete({ item: productId });
-
-        res
-          .status(200)
-          .json({ message: "Product removed from cart", updatedItem });
-      }
-    } else {
-      res.status(404).json({ error: "Product not found" });
+    if (isInCart === false) {
+      const removedCartItem = await Cart.findOneAndDelete({
+        owner: req.user.id,
+        item: productId,
+      });
+      res.status(200).json({ removedCartItem });
     }
   } catch (error) {
     res.status(500).json({ error: "Internal server error." });
-    console.log(error);
   }
 });
 
-app.post("/product/cart_quantity", async (req, res) => {
+app.post("/product/cart_quantity", verifyJwt, async (req, res) => {
   const { productId, cartQuantity } = req.body;
+
   try {
     const updateCart = await Cart.findOneAndUpdate(
-      { item: productId },
+      { item: productId, owner: req.user.id },
       { cartQuantity },
       { new: true }
     );
@@ -251,15 +240,23 @@ app.post("/product/cart_quantity", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: "Internal Server Error." });
-    console.log(error);
   }
 });
 
-app.post("/add_ship_address", async (req, res) => {
+app.post("/add_ship_address", verifyJwt, async (req, res) => {
   const { data, previousSelectedAddress } = req.body;
+
   try {
+    if (data) {
+      data.owner = req.user.id;
+    }
     const addNewAddress = new Address(data);
     const savedAddress = await addNewAddress.save();
+    if (!previousSelectedAddress) {
+      return res
+        .status(201)
+        .json({ message: "Address added  successfully", savedAddress });
+    }
     const updatedAddress = await Address.findByIdAndUpdate(
       previousSelectedAddress._id,
       { isDeliver: false },
@@ -274,20 +271,19 @@ app.post("/add_ship_address", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: "Internal Server Error.", error });
-    console.log(error);
   }
 });
 
-app.post("/update_address_deliver", async (req, res) => {
+app.post("/update_address_deliver", verifyJwt, async (req, res) => {
   const { deliverAddressId, notDeliverAddressId } = req.body;
   try {
-    const updateDeliverAddress = await Address.findByIdAndUpdate(
-      deliverAddressId,
+    const updateDeliverAddress = await Address.findOneAndUpdate(
+      { owner: req.user.id, _id: deliverAddressId },
       { isDeliver: true },
       { new: true }
     );
-    const updateNotDeliverAddress = await Address.findByIdAndUpdate(
-      notDeliverAddressId,
+    const updateNotDeliverAddress = await Address.findOneAndUpdate(
+      { owner: req.user.id, _id: notDeliverAddressId },
       { isDeliver: false },
       { new: true }
     );
@@ -300,11 +296,11 @@ app.post("/update_address_deliver", async (req, res) => {
   }
 });
 
-app.post("/update_address_details", async (req, res) => {
+app.post("/update_address_details", verifyJwt, async (req, res) => {
   const { dataToUpdate, addressId } = req.body;
   try {
-    const updatedAddress = await Address.findByIdAndUpdate(
-      addressId,
+    const updatedAddress = await Address.findOneAndUpdate(
+      { owner: req.user.id, _id: addressId },
       dataToUpdate,
       { new: true }
     );
@@ -317,11 +313,10 @@ app.post("/update_address_details", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: "Internal server error." });
-    console.log(error);
   }
 });
 
-app.post("/update_user_profile", async (req, res) => {
+app.post("/update_user_profile", verifyJwt, async (req, res) => {
   const { profileId, dataToUpdate } = req.body;
 
   try {
@@ -338,20 +333,23 @@ app.post("/update_user_profile", async (req, res) => {
   }
 });
 
-app.post("/move_cart_to_order", async (req, res) => {
+app.post("/move_cart_to_order", verifyJwt, async (req, res) => {
   const { orderedItems, deliveryAddress } = req.body;
 
   try {
-    const newOrder = new Order({ orderedItems, deliveryAddress });
+    const newOrder = new Order({
+      orderedItems,
+      deliveryAddress,
+      owner: req.user.id,
+    });
     const savedItems = await newOrder.save();
     if (savedItems) {
       const allIdToDelete = savedItems.orderedItems.map((item) => item.itemId);
 
-      await Cart.deleteMany({ item: { $in: allIdToDelete } });
-      await Product.updateMany(
-        { _id: { $in: allIdToDelete } },
-        { $set: { isInCart: false } }
-      );
+      await Cart.deleteMany({
+        owner: req.user.id,
+        item: { $in: allIdToDelete },
+      });
 
       res
         .status(200)
@@ -361,19 +359,27 @@ app.post("/move_cart_to_order", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
-    console.log(error);
   }
 });
 
-app.delete("/delete_address/:addressId", async (req, res) => {
+app.delete("/delete_address/:addressId", verifyJwt, async (req, res) => {
   const addressId = req.params.addressId;
 
   try {
-    const deletedAddress = await Address.findByIdAndDelete(addressId);
+    const deletedAddress = await Address.findOneAndDelete({
+      owner: req.user.id,
+      _id: addressId,
+    });
     if (deletedAddress) {
-      const findIsDeliver = await Address.findOne({ isDeliver: true });
+      const findIsDeliver = await Address.findOne({
+        owner: req.user.id,
+        isDeliver: true,
+      });
       if (!findIsDeliver) {
-        await Address.findByIdAndUpdate("67650438890a36594c34bdcb", {
+        const findFirstAddress = await Address.findOne({
+          owner: req.user.id,
+        }).sort({ _id: 1 }); //will give the very first created address
+        await Address.findByIdAndUpdate(findFirstAddress._id, {
           isDeliver: true,
         });
       }
@@ -385,7 +391,6 @@ app.delete("/delete_address/:addressId", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
-    console.log(error);
   }
 });
 
