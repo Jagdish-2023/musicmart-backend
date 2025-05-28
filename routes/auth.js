@@ -73,9 +73,8 @@ router.post("/login", async (req, res) => {
       .status(200)
       .json({ message: "Logged in successfully", token: jwtToken });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to login into your Account", error: error });
+    res.status(500).json({ message: "Failed to login into your Account" });
+    console.log(error);
   }
 });
 
