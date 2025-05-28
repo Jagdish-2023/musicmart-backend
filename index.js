@@ -9,7 +9,7 @@ const app = express();
 app.use(express.json());
 
 const corsOptions = {
-  origin: "https://musicmart.vercel.app/",
+  origin: "https://musicmart.vercel.app",
   credentials: true,
   optionSuccessStatus: 200,
 };
